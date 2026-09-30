@@ -35,8 +35,8 @@ def load_config(env_path=None,environ=None):
 def check(endpoint,key,model,timeout=90):
     """Return (ok, reason, elapsed_seconds). Never includes the key in the reason."""
     body=json.dumps({'model':model,'input':[{'role':'user','content':'Call ping once with no arguments.'}],
-        'tools':[PING_TOOL],'tool_choice':{'type':'function','name':'ping'},'max_output_tokens':64}).encode()
-    headers={'Content-Type':'application/json'}
+        'tools':[PING_TOOL],'tool_choice':{'type':'function','name':'ping'},'max_output_tokens':512}).encode()
+    headers={'Content-Type':'application/json','User-Agent':'slac-investigator-check'}  # Groq's edge 403s the default Python-urllib agent
     if key:headers['Authorization']='Bearer '+key
     request=urllib.request.Request(endpoint,data=body,headers=headers,method='POST')
     started=time.perf_counter()
