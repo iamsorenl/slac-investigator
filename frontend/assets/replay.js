@@ -57,8 +57,10 @@ export function label(kind, value) {
 }
 export const INSTRUMENTS = {rf:['Klystron','the power source'], ltu:['Beam, mid-line','LTU position and charge monitors'], dump:['Beam, end of line','monitors at the beam dump']};
 export const CASES = {
-  'slac-001': {title:'A glitch the beam felt', summary:'Klystron power jumped and the beam dipped at the same moment.'},
-  'slac-003': {title:'A glitch the beam ignored', summary:'Klystron power wobbled, but the beam looked fine.'},
+  'slac-001': {title:'A glitch the beam felt', chip:'Event 1 · beam felt it', summary:'Klystron power jumped and the beam dipped at the same moment.'},
+  'slac-002': {title:'Another glitch the beam felt', chip:'Event 2 · beam felt it', summary:'SLAC labeled this one as disturbing the beam.'},
+  'slac-003': {title:'A glitch the beam ignored', chip:'Event 3 · beam ignored it', summary:'Klystron power wobbled, but the beam looked fine.'},
+  'slac-004': {title:'Another glitch the beam ignored', chip:'Event 4 · beam ignored it', summary:'SLAC labeled this one as not disturbing the beam.'},
 };
 const QUESTIONS = [['beam_disturbance', 'Was the beam disturbed?'], ['unique_cause', 'Did the klystron cause it?']];
 const unquote = s => String(s ?? '').trim().replace(/^["']+|["']+$/g, '');
