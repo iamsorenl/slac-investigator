@@ -1,5 +1,11 @@
 # RF investigation assistant — Flower hackathon prototype
 
+**Try it live:** [iamsorenl.github.io/slac-investigator](https://iamsorenl.github.io/slac-investigator/): step through saved runs of the grid investigating real SLAC events. Live runs (ask your own question) are coming once the free backend is up.
+
+The demo is hosted from [Soren's fork](https://github.com/iamsorenl/slac-investigator) so it can stay up for free after the hackathon. This repo is the main project; the fork only adds the hosting.
+
+This is a fork of [GavinRS/slac-investigator](https://github.com/GavinRS/slac-investigator), the team's main repo.
+
 Three instrument agents (`rf`, `ltu`, `dump`) each run as a Flower SuperNode that holds only its own slice of real SLAC data.
 Each one runs read-only checks on that slice and sends back only a summary, not the raw data.
 An orchestrator uses Flower's Grid tools (`get_nodes`, `push_messages`, `pull_messages`) to ask the nodes and collect their summaries.
