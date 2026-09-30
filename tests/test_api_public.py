@@ -173,3 +173,25 @@ def test_visitor_ip_is_rightmost_forwarded_address(tmp_path, monkeypatch):
 def test_public_mode_hides_api_docs(tmp_path, monkeypatch):
     with client_for(public_app(tmp_path, monkeypatch)) as c:
         assert c.get('/docs').status_code == 404 and c.get('/openapi.json').status_code == 404
+
+
+def test_private_proxy_peer_uses_forwarded_client(tmp_path, monkeypatch):
+    # Hugging Face's proxy reaches the container from a private address, not localhost.
+    with client_for(public_app(tmp_path, monkeypatch, INVESTIGATOR_VISITOR_RUNS='1'), ip='10.20.30.40') as c:
+        first = start(c, '198.51.100.1'); assert first.status_code == 202; terminal(c, first.json())
+        assert start(c, '198.51.100.1').json()['detail']['code'] == 'visitor_limit'
+        assert start(c, '198.51.100.2').status_code == 202
+
+
+def test_spoofed_forwarded_and_private_hops_are_skipped(tmp_path, monkeypatch):
+    # Visitor-supplied entries sit left of the real client; internal hops sit right of it.
+    with client_for(public_app(tmp_path, monkeypatch, INVESTIGATOR_VISITOR_RUNS='1'), ip='100.64.0.9') as c:
+        first = start(c, '9.9.9.9, 198.51.100.1, 10.0.0.2'); assert first.status_code == 202; terminal(c, first.json())
+        assert start(c, '1.1.1.1, 198.51.100.1').json()['detail']['code'] == 'visitor_limit'
+        assert start(c, '198.51.100.1, 198.51.100.2, 10.0.0.2').status_code == 202
+
+
+def test_forwarded_with_only_private_hops_falls_back_to_peer(tmp_path, monkeypatch):
+    with client_for(public_app(tmp_path, monkeypatch, INVESTIGATOR_VISITOR_RUNS='1'), ip='10.0.0.1') as c:
+        first = start(c, '10.0.0.7'); assert first.status_code == 202; terminal(c, first.json())
+        assert start(c, '10.0.0.8').json()['detail']['code'] == 'visitor_limit'

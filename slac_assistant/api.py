@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -88,7 +89,10 @@ PUBLIC_QUESTION_LIMIT = 500
 
 PACIFIC = ZoneInfo('America/Los_Angeles')
 STALE_AFTER = timedelta(minutes=15)
-PROXY_PEERS = {'127.0.0.1', '::1'}
+# Proxies we trust to append the real client to X-Forwarded-For: Caddy on localhost, or a
+# platform proxy (Hugging Face) reaching the container from a private network.
+TRUSTED_PROXY_NETS = [ipaddress.ip_network(n) for n in (
+    '127.0.0.0/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', 'fc00::/7')]
 
 
 def day_start(at=None):
@@ -96,11 +100,20 @@ def day_start(at=None):
     return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
 
 
+def _trusted(ip):
+    try:
+        return any(ipaddress.ip_address(ip) in net for net in TRUSTED_PROXY_NETS)
+    except ValueError:
+        return False
+
+
 def visitor_id(request, salt):
     ip = request.client.host if request.client else 'unknown'
     forwarded = request.headers.get('x-forwarded-for')
-    if ip in PROXY_PEERS and forwarded:
-        ip = forwarded.split(',')[-1].strip()   # Caddy appends the real client last
+    if _trusted(ip) and forwarded:
+        # Rightmost address that isn't an internal hop = what the outermost proxy saw.
+        hops = [h.strip() for h in forwarded.split(',') if h.strip()]
+        ip = next((h for h in reversed(hops) if not _trusted(h)), ip)
     return hashlib.sha256((salt + ip).encode()).hexdigest()[:16]
 
 
