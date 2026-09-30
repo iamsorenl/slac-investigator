@@ -1,6 +1,6 @@
 # Live demo site: ask your own questions
 
-Date: 2026-09-29. Status: draft for Soren's review.
+Date: 2026-09-29. Status: approved by Soren 2026-09-29.
 
 ## Goal
 
@@ -81,6 +81,14 @@ Off by default; local behavior stays exactly as today. Turned on with `INVESTIGA
 
 Install `frontend/deploy/github-pages.yml` as `.github/workflows/frontend-pages.yml` in the fork. It already uploads only `frontend/dist`. Deploys on push to main in the fork.
 
+### 5. Linking (last step, only after a live run works from the Pages URL)
+
+The original repo `GavinRS/slac-investigator` is the link Soren shares, so the first impression is a group project.
+
+- **PR to the original README:** a "Try it live" link near the top, plus a short paragraph explaining that the demo runs from Soren's fork (`iamsorenl/slac-investigator`) on Groq's free tier and self-hosted Flower, and why it lives there.
+- **Ask Gavin** to set the original repo's About → Website field to the demo URL (needs admin).
+- **Site footer** names the team and links the original repo. The fork's README points back to the original as the main project.
+
 ## Things to verify first (before building on them)
 
 1. **Grid through the API works locally:** `start_grid.sh` + `start_api.sh`, POST `mode: grid` with a question, and get a completed result. `docs/API.md` still says grid jobs fail until the orchestrator lands; that note predates the merged grid work.
@@ -113,4 +121,4 @@ Install `frontend/deploy/github-pages.yml` as `.github/workflows/frontend-pages.
 - Asking about events beyond the 4 recorded ones.
 - Accounts or logins.
 - Paid hosting or a paid model tier.
-- Changes to Gavin's repo.
+- Changes to Gavin's repo other than the README link PR.
