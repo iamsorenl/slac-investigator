@@ -1,6 +1,7 @@
 """Local frontend API. Provider configuration is owned by SuperLink, never clients."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
@@ -9,7 +10,7 @@ import re
 import sqlite3
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -58,6 +59,30 @@ def failure(exc):
         if any(needle in text for needle in needles):
             return {'code': code, 'message': message}
     return {'code': 'workflow_failed', 'message': 'Flower did not complete the investigation. Inspect server logs.'}
+
+
+@dataclass
+class Settings:
+    public: bool
+    allowed_hosts: list
+    daily_runs: int
+    visitor_runs: int
+    salt: str
+
+
+def load_settings(environ=os.environ):
+    settings = Settings(
+        public=environ.get('INVESTIGATOR_PUBLIC') == '1',
+        allowed_hosts=[h.strip() for h in environ.get('INVESTIGATOR_ALLOWED_HOSTS', '').split(',') if h.strip()],
+        daily_runs=int(environ.get('INVESTIGATOR_DAILY_RUNS', '15')),
+        visitor_runs=int(environ.get('INVESTIGATOR_VISITOR_RUNS', '3')),
+        salt=environ.get('INVESTIGATOR_VISITOR_SALT', ''))
+    if settings.public and not settings.salt:
+        raise RuntimeError('INVESTIGATOR_VISITOR_SALT is required in public mode')
+    return settings
+
+
+PUBLIC_QUESTION_LIMIT = 500
 
 
 class StartRequest(BaseModel):
@@ -185,6 +210,7 @@ def status(row):
 
 
 def create_app(db_path=None, runner=run_flower):
+    settings = load_settings()
     store = Store(db_path or ROOT/'artifacts/api/state.sqlite3')
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='flower-api')
     configured_model = configured_model_setting()
@@ -229,7 +255,7 @@ def create_app(db_path=None, runner=run_flower):
 
     app = FastAPI(title='SLAC Investigation API', version='1.0.0', lifespan=lifespan)
     app.state.store = store
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver'])
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver', *settings.allowed_hosts])
     origins = os.environ.get('INVESTIGATOR_CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173').split(',')
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=['GET', 'POST'], allow_headers=['Content-Type'])
 
@@ -237,6 +263,14 @@ def create_app(db_path=None, runner=run_flower):
     async def invalid_request(request, exc):
         # Pydantic's default body echoes rejected input, which could contain a key.
         return JSONResponse(status_code=422, content={'detail': [{'loc': e['loc'], 'type': e['type'], 'msg': 'Invalid request field'} for e in exc.errors()]})
+
+    def check_public(mode, question):
+        if not settings.public:
+            return
+        if mode != 'collaborative':
+            raise HTTPException(400, detail='Only collaborative (model-backed grid) investigations run on the public demo.')
+        if len(question) > PUBLIC_QUESTION_LIMIT:
+            raise HTTPException(400, detail='Questions are limited to 500 characters on the public demo.')
 
     def submit(job_id):
         executor.submit(work, job_id)
@@ -289,6 +323,7 @@ def create_app(db_path=None, runner=run_flower):
     def start(request: StartRequest):
         if request.event_id not in event_ids():
             raise HTTPException(404, detail='Event not found')
+        check_public(request.mode, request.question.strip())
         return submit(store.enqueue(request=request, question=request.question.strip(), model=configured_model))
 
     @app.get('/api/v1/investigations/{investigation_id}', response_model=StatusResponse)
@@ -314,6 +349,7 @@ def create_app(db_path=None, runner=run_flower):
 
     @app.post('/api/v1/series/{series_id}/follow-ups', status_code=202, response_model=StatusResponse)
     def followup(series_id: str, request: FollowupRequest):
+        check_public('collaborative', request.question)
         return submit(store.enqueue(series_id=series_id, question=request.question))
 
     return app
