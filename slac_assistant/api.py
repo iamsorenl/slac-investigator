@@ -2,13 +2,15 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import sqlite3
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -84,6 +86,31 @@ def load_settings(environ=os.environ):
 
 PUBLIC_QUESTION_LIMIT = 500
 
+PACIFIC = ZoneInfo('America/Los_Angeles')
+STALE_AFTER = timedelta(minutes=15)
+PROXY_PEERS = {'127.0.0.1', '::1'}
+
+
+def day_start(at=None):
+    local = (at or datetime.now(timezone.utc)).astimezone(PACIFIC)
+    return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
+
+
+def visitor_id(request, salt):
+    ip = request.client.host if request.client else 'unknown'
+    forwarded = request.headers.get('x-forwarded-for')
+    if ip in PROXY_PEERS and forwarded:
+        ip = forwarded.split(',')[-1].strip()   # Caddy appends the real client last
+    return hashlib.sha256((salt + ip).encode()).hexdigest()[:16]
+
+
+def limit_messages(settings):
+    return {
+        'daily_limit': 'Lots of people tried this today, so live runs are paused until tomorrow (midnight Pacific). The saved runs show the same grid at work.',
+        'visitor_limit': f"You've used your {settings.visitor_runs} live runs for today, thanks for trying it! Live runs reset at midnight Pacific; the saved runs are still here.",
+        'busy': "Someone else's run is in progress. Runs take a minute or two, so try again shortly.",
+    }
+
 
 class StartRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -140,6 +167,10 @@ class Store:
                     job_id TEXT NOT NULL, seq INTEGER NOT NULL, created_at TEXT NOT NULL,
                     payload TEXT NOT NULL, PRIMARY KEY(job_id, seq));
             ''')
+            try:
+                db.execute('ALTER TABLE jobs ADD COLUMN visitor TEXT')
+            except sqlite3.OperationalError:
+                pass   # column already exists
         os.chmod(self.path, 0o600)
 
     @contextmanager
@@ -176,10 +207,22 @@ class Store:
             seq = db.execute('SELECT COALESCE(MAX(seq),0)+1 FROM activity WHERE job_id=?', (job_id,)).fetchone()[0]
             db.execute('INSERT INTO activity VALUES (?,?,?,?)', (job_id, seq, now(), json.dumps(public(event))))
 
-    def enqueue(self, request=None, series_id=None, question='', model=None):
+    def usage(self, db, visitor, since):
+        total = db.execute('SELECT COUNT(*) FROM jobs WHERE created_at>=?', (since,)).fetchone()[0]
+        mine = db.execute('SELECT COUNT(*) FROM jobs WHERE created_at>=? AND visitor=?', (since, visitor)).fetchone()[0]
+        fresh = (datetime.now(timezone.utc) - STALE_AFTER).isoformat()
+        busy = db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running') AND updated_at>=?", (fresh,)).fetchone()[0] > 0
+        return total, mine, busy
+
+    def enqueue(self, request=None, series_id=None, question='', model=None, visitor=None, caps=None):
         job_id = str(uuid4())
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
+            if caps is not None:
+                total, mine, busy = self.usage(db, visitor, day_start())
+                code = 'busy' if busy else 'daily_limit' if total >= caps.daily_runs else 'visitor_limit' if mine >= caps.visitor_runs else None
+                if code:
+                    raise HTTPException(429, detail={'code': code, 'message': limit_messages(caps)[code]})
             if series_id is None:
                 series_id = str(uuid4())
                 db.execute('INSERT INTO series VALUES (?,?,?,?,NULL,NULL)',
@@ -193,8 +236,8 @@ class Store:
                     raise HTTPException(409, detail='Smoke investigations do not support human follow-ups')
                 if not latest or latest['status'] != 'completed' or not series['flower_series_id']:
                     raise HTTPException(409, detail='Follow-up requires the latest run to be completed; an active, failed, or interrupted series cannot advance')
-            db.execute('INSERT INTO jobs (id,series_id,status,question,created_at,updated_at) VALUES (?,?,?,?,?,?)',
-                       (job_id, series_id, 'queued', question, now(), now()))
+            db.execute('INSERT INTO jobs (id,series_id,status,question,created_at,updated_at,visitor) VALUES (?,?,?,?,?,?,?)',
+                       (job_id, series_id, 'queued', question, now(), now(), visitor))
             db.execute('UPDATE series SET latest_job=? WHERE id=?', (job_id, series_id))
         return job_id
 
@@ -319,12 +362,19 @@ def create_app(db_path=None, runner=run_flower):
                           'Positions with local charge below 1e8 are masked as null.',
                           'relative_s is relative to recorded candidate end; no timestamps are shifted.']}
 
+    def caps_for(http_request):
+        if not settings.public:
+            return None, None
+        return visitor_id(http_request, settings.salt), settings
+
     @app.post('/api/v1/investigations', status_code=202, response_model=StatusResponse)
-    def start(request: StartRequest):
+    def start(request: StartRequest, http_request: Request):
         if request.event_id not in event_ids():
             raise HTTPException(404, detail='Event not found')
-        check_public(request.mode, request.question.strip())
-        return submit(store.enqueue(request=request, question=request.question.strip(), model=configured_model))
+        question = request.question.strip()
+        check_public(request.mode, question)
+        visitor, caps = caps_for(http_request)
+        return submit(store.enqueue(request=request, question=question, model=configured_model, visitor=visitor, caps=caps))
 
     @app.get('/api/v1/investigations/{investigation_id}', response_model=StatusResponse)
     def get_status(investigation_id: str):
@@ -348,8 +398,17 @@ def create_app(db_path=None, runner=run_flower):
         return {'investigation_id': investigation_id, 'series_id': row['series_id'], 'report': json.loads(row['result'])}
 
     @app.post('/api/v1/series/{series_id}/follow-ups', status_code=202, response_model=StatusResponse)
-    def followup(series_id: str, request: FollowupRequest):
+    def followup(series_id: str, request: FollowupRequest, http_request: Request):
         check_public('collaborative', request.question)
-        return submit(store.enqueue(series_id=series_id, question=request.question))
+        visitor, caps = caps_for(http_request)
+        return submit(store.enqueue(series_id=series_id, question=request.question, visitor=visitor, caps=caps))
+
+    @app.get('/api/v1/limits')
+    def limits(http_request: Request):
+        visitor = visitor_id(http_request, settings.salt)
+        with store.db() as db:
+            total, mine, busy = store.usage(db, visitor, day_start())
+        return {'public': settings.public, 'runs_left_today': max(0, settings.daily_runs - total),
+                'visitor_runs_left': max(0, settings.visitor_runs - mine), 'busy': busy}
 
     return app

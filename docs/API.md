@@ -6,9 +6,45 @@ Authoritative implementation: `slac_assistant/api.py`. Start with `./scripts/sta
 
 This is a **local, single-user development API**, bound to loopback, with **one Uvicorn worker**. There is no frontend login or public authentication endpoint. Default CORS origins are `http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:5173`, and `http://127.0.0.1:5173`. `INVESTIGATOR_CORS_ORIGINS` can set an explicit comma-separated list. Cookies are not used; allowed methods are GET/POST and the allowed request header is Content-Type. Only localhost/127.0.0.1 hosts are accepted. CORS is not authentication.
 
-**GitHub Pages stays in saved-run replay mode.** This service is not a hosted backend and does not promise that an HTTPS Pages origin can reach localhost. Public live execution requires an authenticated HTTPS backend deployment, explicit origin configuration, and an authorization policy; that deployment is not implemented by this local API. Do not expose this server publicly or add a provider credential to browser code.
+**Hosted only in public mode behind Caddy; see docs/DEPLOY.md.**
 
 The browser never supplies provider keys, provider names, model IDs, Flower addresses, or Flower internal credentials. Unknown request fields are rejected without echoing their values. SuperLink alone loads the model provider from the private `.env` through `scripts/start.sh`. The API reads the model from `INVESTIGATOR_MODEL` (environment, then `.env`, then the app default), uses Flower's Control API (`FLOWER_CONTROL_URL`, default `http://127.0.0.1:8000`), and never makes direct provider requests. The API never reads the provider key.
+
+## Public mode
+
+Public mode is enabled with `INVESTIGATOR_PUBLIC=1`. It requires:
+
+- `INVESTIGATOR_ALLOWED_HOSTS`: comma-separated hostnames added to the `TrustedHostMiddleware` allow list (e.g. `demo.sslip.io`).
+- `INVESTIGATOR_CORS_ORIGINS`: comma-separated CORS origins allowed to call the API from a browser (e.g. `https://iamsorenl.github.io`).
+- `INVESTIGATOR_VISITOR_SALT`: required whenever `INVESTIGATOR_PUBLIC=1`; startup raises `RuntimeError` without it. Never logged or exposed; used only to hash visitor IPs (below).
+- `INVESTIGATOR_DAILY_RUNS` (default `15`): total live runs (starts plus follow-ups) allowed across all visitors per day.
+- `INVESTIGATOR_VISITOR_RUNS` (default `3`): live runs allowed per visitor per day.
+
+In public mode, `POST /api/v1/investigations` only accepts `mode: "collaborative"` (400 otherwise) and `question` is capped at 500 characters (400 otherwise); follow-ups are always restricted to `collaborative` regardless of mode.
+
+**Caps.** Every start or follow-up counts against two rolling-day counters (visitor and global) and one busy check, evaluated inside the same database transaction that enqueues the job, so concurrent requests cannot both pass. On a cap hit the response is `429` with:
+
+```json
+{"detail": {"code": "daily_limit", "message": "Lots of people tried this today, so live runs are paused until tomorrow (midnight Pacific). The saved runs show the same grid at work."}}
+```
+
+The three codes and their exact messages:
+
+- `daily_limit`: "Lots of people tried this today, so live runs are paused until tomorrow (midnight Pacific). The saved runs show the same grid at work."
+- `visitor_limit`: "You've used your {N} live runs for today, thanks for trying it! Live runs reset at midnight Pacific; the saved runs are still here." (`{N}` is `INVESTIGATOR_VISITOR_RUNS`)
+- `busy`: "Someone else's run is in progress. Runs take a minute or two, so try again shortly."
+
+Only one job may be `queued`/`running` at a time; a second live start or follow-up while one is active gets `busy`. A job's row is only counted as active while its `updated_at` is within the last 15 minutes; a stalled record older than that no longer blocks new runs. Daily and per-visitor counters reset at midnight **America/Los_Angeles** (`day_start`), computed in UTC so it is DST-correct.
+
+**Visitor identity.** A visitor is a salted SHA-256 hash (first 16 hex characters) of the caller's IP; the raw IP is never persisted. Behind the Caddy reverse proxy the API trusts `X-Forwarded-For` only when the direct peer is `127.0.0.1`/`::1`, taking the last (right-most) address Caddy appended; otherwise the header is ignored and the direct peer IP is used.
+
+`GET /api/v1/limits` reports current standing without consuming a run:
+
+```json
+{"public": true, "runs_left_today": 12, "visitor_runs_left": 2, "busy": false}
+```
+
+`public` mirrors `INVESTIGATOR_PUBLIC`; `runs_left_today` and `visitor_runs_left` are floored at 0; `busy` reflects the same active-job check used by the caps.
 
 ## Endpoints
 
@@ -22,6 +58,7 @@ The browser never supplies provider keys, provider names, model IDs, Flower addr
 | GET | `/api/v1/investigations/{id}/activity?after=0&limit=100` | 200 | Ordered activity page |
 | GET | `/api/v1/investigations/{id}/result` | 200 | Completed result; 409 until completed, including failures |
 | POST | `/api/v1/series/{series_id}/follow-ups` | 202 | New investigation run in the same series |
+| GET | `/api/v1/limits` | 200 | Current cap standing: `{ "public", "runs_left_today", "visitor_runs_left", "busy" }` |
 
 POST requests must use `Content-Type: application/json`. There is no SSE or WebSocket contract; poll status/activity approximately once per second. A POST creates work once per request; **there is no idempotency-key support or automatic retry**. Disable duplicate submissions. If a POST's network response is lost, do not silently resend it: work may already be running.
 
