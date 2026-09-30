@@ -6,6 +6,7 @@ HOST=${1:?usage: sudo setup.sh <ip-with-dashes>.sslip.io}
 APP=/opt/slac-investigator
 REPO=https://github.com/iamsorenl/slac-investigator.git
 
+export DEBIAN_FRONTEND=noninteractive
 apt-get update -q && apt-get install -yq git curl caddy iptables-persistent
 id slac >/dev/null 2>&1 || useradd --system --create-home --shell /bin/bash slac
 [ -d "$APP/.git" ] || git clone "$REPO" "$APP"
@@ -35,5 +36,33 @@ netfilter-persistent save
 systemctl daemon-reload
 systemctl enable --now slac-grid slac-api caddy
 systemctl restart slac-grid slac-api caddy
-sleep 10
-curl -fsS "https://$HOST/api/v1/limits" && echo && echo "Live at https://$HOST"
+
+# Wait for API to be ready locally (grid and dependencies may take time)
+echo "Waiting for API on localhost..."
+for attempt in {1..30}; do
+  if curl -fsS http://127.0.0.1:8080/api/v1/limits >/dev/null 2>&1; then
+    echo "API ready on localhost."
+    break
+  fi
+  if [ "$attempt" -eq 30 ]; then
+    echo "Error: API did not respond on localhost after 150 seconds."
+    echo "Check logs: sudo journalctl -u slac-grid -u slac-api -u caddy -f"
+    exit 1
+  fi
+  sleep 5
+done
+
+# Verify public HTTPS endpoint (hairpin through public IP, using --resolve to bypass DNS)
+echo "Verifying public HTTPS endpoint..."
+for attempt in {1..30}; do
+  if curl -fsS --resolve "$HOST:443:127.0.0.1" "https://$HOST/api/v1/limits" >/dev/null 2>&1; then
+    echo "Live at https://$HOST"
+    exit 0
+  fi
+  if [ "$attempt" -eq 30 ]; then
+    echo "Error: public HTTPS endpoint did not respond after 150 seconds."
+    echo "Check logs: sudo journalctl -u slac-grid -u slac-api -u caddy -f"
+    exit 1
+  fi
+  sleep 5
+done

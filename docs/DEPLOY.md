@@ -41,7 +41,11 @@ Convert the public IP to an sslip.io hostname. For example:
    sudo git clone https://github.com/iamsorenl/slac-investigator /opt/slac-investigator
    ```
 
-3. Create `/opt/slac-investigator/.env` with the Groq provider block (3 lines):
+3. Create `/opt/slac-investigator/.env` with the Groq provider block (3 lines). Use `sudoedit` so the API key does not land in shell history:
+   ```bash
+   sudoedit /opt/slac-investigator/.env
+   ```
+   Add these 3 lines:
    ```sh
    FLWR_MODEL_API_ENDPOINT=https://api.groq.com/openai/v1/responses
    FLWR_MODEL_API_KEY=<your-groq-api-key>

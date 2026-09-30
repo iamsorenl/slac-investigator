@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .env*
 !.env.example
+api.env
 .flower/
 .flower-*/
 *.fab
