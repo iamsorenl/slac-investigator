@@ -52,7 +52,7 @@ Only ports 80/443 are open on the VM. The SuperLink, nodes and API listen on loc
 Off by default; local behavior stays exactly as today. Turned on with `INVESTIGATOR_PUBLIC=1` on the VM.
 
 - **Hosts and origins from env:** `INVESTIGATOR_ALLOWED_HOSTS` (the sslip.io name) and the existing `INVESTIGATOR_CORS_ORIGINS` (`https://iamsorenl.github.io`).
-- **Grid only:** in public mode, `mode` must be `grid`; anything else gets 400.
+- **Grid only:** in public mode, `mode` must be `collaborative` (the model-backed grid: models on each node and the orchestrator; `grid` is the deterministic no-model variant); anything else gets 400.
 - **Question length:** 500 characters max in public mode (4,000 locally).
 - **Daily caps:** before queueing a start or follow-up, count today's jobs (day resets at midnight Pacific) in the existing SQLite `jobs` table:
   - 15 or more overall → `429 {"code": "daily_limit", "message": "Lots of people tried this today, so live runs are paused until tomorrow. The saved runs below show the same grid at work."}`
@@ -104,7 +104,7 @@ The original repo `GavinRS/slac-investigator` is the link Soren shares, so the f
 
 ## Testing
 
-- **pytest** (`tests/test_api.py`): public mode off by default; grid-only; 500-character limit; global cap; visitor cap; follow-ups counted; day rollover at Pacific midnight; busy rejection; `/limits` numbers; forwarded IP ignored when the request did not come from localhost; the raw IP never stored.
+- **pytest** (`tests/test_api.py`): public mode off by default; collaborative-only; 500-character limit; global cap; visitor cap; follow-ups counted; day rollover at Pacific midnight; busy rejection; `/limits` numbers; forwarded IP ignored when the request did not come from localhost; the raw IP never stored.
 - **node tests** (`frontend/tests/`): Pages origin allowed only with the exact public API URL; 429 codes render the right banner; fallback to saved runs when `/limits` fails.
 - **End to end:** local grid run on Groq (verification step 2); after deploy, one live run started from the Pages URL on a phone and a laptop; then hit the cap on purpose with the env set to 1 and confirm the banner.
 

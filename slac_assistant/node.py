@@ -25,7 +25,8 @@ Return ONLY one JSON object: {"assessment": "...", "observation": "..."}'''
 
 def runtime_client():
     from openai import OpenAI
-    return OpenAI(base_url=os.environ['FLWR_RUNTIME_BASE_URL'],api_key=os.environ['FLWR_RUNTIME_API_KEY'],max_retries=0,timeout=120)
+    # Free-tier providers (Groq: 8K tokens/min) answer 429 mid-run; the SDK's backoff waits it out.
+    return OpenAI(base_url=os.environ['FLWR_RUNTIME_BASE_URL'],api_key=os.environ['FLWR_RUNTIME_API_KEY'],max_retries=5,timeout=120)
 
 def model_note(model,report,client=None):
     """Model modes (spec §3): one model call writes observation/assessment from the summary; invalid output keeps the deterministic text."""

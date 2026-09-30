@@ -31,7 +31,7 @@ POST requests must use `Content-Type: application/json`. There is no SSE or WebS
 {"event_id":"slac-001","mode":"collaborative"}
 ```
 
-`mode` is `collaborative` (default), `baseline`, `smoke`, or `grid`. Smoke performs deterministic software checks and no inference. `grid` runs the Grid orchestrator (three instrument nodes, each replying with a summary only; see `node_report`/`data_shared` below). The API accepts `grid` now; until the AgentApp's Grid orchestrator lands, a `grid` job fails with `workflow_failed` rather than running a single-agent path under the `grid` label. The event must exist in `/events`. An optional `question` (up to 4,000 characters) is passed to the agents. No series ID is accepted here; use the follow-up route to continue.
+`mode` is `collaborative` (default), `baseline`, `smoke`, or `grid`. Smoke performs deterministic software checks and no inference. Both `collaborative` and `grid` run on the three-node Grid (rf, ltu, dump; each node replies with a summary only, see `node_report`/`data_shared` below). `collaborative` calls the model on each node and for the orchestrator's final finding; `grid` is the same topology with deterministic node checks and no model calls. Verified end to end on Groq `openai/gpt-oss-20b` on 2026-09-29 (about 15 s per collaborative run). The event must exist in `/events`. An optional `question` (up to 4,000 characters) is passed to the agents. No series ID is accepted here; use the follow-up route to continue.
 
 The 202 response and subsequent status responses use the same shape (the job may already be running when 202 arrives):
 

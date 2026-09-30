@@ -4,7 +4,7 @@
 
 **Goal:** Anyone can open the Fieldnote site on GitHub Pages, ask their own question about one of the 4 SLAC events, and watch a live Flower grid answer it, at $0 cost with daily caps.
 
-**Architecture:** The existing FastAPI app gets an opt-in public mode (host/origin allowlist, grid-only, 500-char questions, daily caps counted in its SQLite job table, one run at a time). It runs on an Oracle Always Free VM behind Caddy (HTTPS via sslip.io), next to a self-hosted Flower SuperLink and 3 SuperNodes started by the existing `scripts/start_grid.sh`, using Groq's free gpt-oss-20b. The existing static frontend gets one configured public API URL and opens in live mode on the Pages origin, falling back to saved runs.
+**Architecture:** The existing FastAPI app gets an opt-in public mode (host/origin allowlist, collaborative-only, 500-char questions, daily caps counted in its SQLite job table, one run at a time). It runs on an Oracle Always Free VM behind Caddy (HTTPS via sslip.io), next to a self-hosted Flower SuperLink and 3 SuperNodes started by the existing `scripts/start_grid.sh`, using Groq's free gpt-oss-20b. The existing static frontend gets one configured public API URL and opens in live mode on the Pages origin, falling back to saved runs.
 
 **Tech Stack:** Python 3 / FastAPI / SQLite / pytest; flwr 1.39; plain ES modules + `node --test`; systemd, Caddy, Ubuntu 24.04 arm64; GitHub Actions Pages.
 
@@ -15,7 +15,7 @@
 - Cost must be $0: Groq free tier with **no card on the account**; Oracle Always Free shape only; GitHub Pages on a public fork.
 - Caps: `INVESTIGATOR_DAILY_RUNS=15`, `INVESTIGATOR_VISITOR_RUNS=3`; follow-ups count as runs; day resets at midnight `America/Los_Angeles`.
 - Public mode is off unless `INVESTIGATOR_PUBLIC=1`. With it off, local behavior is unchanged and all existing tests pass.
-- Public mode: `mode` must be `grid`; questions are at most 500 characters.
+- Public mode: `mode` must be `collaborative` (the model-backed three-node grid; in this codebase `grid` means the deterministic, no-model variant); questions are at most 500 characters.
 - Model on the server: `FLWR_MODEL_API_ENDPOINT=https://api.groq.com/openai/v1/responses`, `INVESTIGATOR_MODEL=openai/gpt-oss-20b`.
 - Never print, log, or commit a key. `.env*` is gitignored; keep it that way. The browser never sends a provider, model, or key.
 - Raw visitor IPs are never stored; only `sha256(salt + ip)[:16]`. Public mode refuses to start without `INVESTIGATOR_VISITOR_SALT`.
@@ -62,7 +62,9 @@ Parallel tracks once Task 1 passes: **backend** (Task 2 → 3), **frontend** (Ta
 
 ---
 
-### Task 1: Prove a grid run through the API on Groq (local)
+### Task 1: Prove a grid run through the API on Groq (local) — DONE 2026-09-29
+
+**Result:** done by the controller. `collaborative` (model-backed grid) run on slac-003 completed in 15 s with model observations on all 3 nodes and an accepted model final (beam not corroborated, matches docs/DEMO.md). Fixes made: `scripts/check_model.py` sends a User-Agent (Groq 403s Python-urllib) and allows 512 output tokens; `runtime_client()` in `slac_assistant/node.py` now uses `max_retries=5` so Groq's 8K tokens/min 429s are waited out instead of dropping the final to the deterministic fallback. Note: in this codebase `grid` = deterministic no-model grid; `collaborative` = the model-backed grid, which is what the public site runs.
 
 No product code unless something fails. This is the gate for everything else.
 
@@ -114,7 +116,7 @@ Expected: success line naming `openai/gpt-oss-20b`. If it fails with 401, stop a
 
 ```bash
 curl -s -X POST http://127.0.0.1:8080/api/v1/investigations -H 'Content-Type: application/json' \
-  -d '{"event_id":"slac-001","mode":"grid","question":"Was the beam disturbed, and do we know why?"}' | tee /tmp/slac-job.json
+  -d '{"event_id":"slac-001","mode":"collaborative","question":"Was the beam disturbed, and do we know why?"}' | tee /tmp/slac-job.json
 # poll until terminal:
 JOB=$(python3 -c "import json;print(json.load(open('/tmp/slac-job.json'))['id'])")
 while :; do S=$(curl -s http://127.0.0.1:8080/api/v1/investigations/$JOB | python3 -c "import json,sys;print(json.load(sys.stdin)['status'])"); echo $S; case $S in completed|failed|interrupted) break;; esac; sleep 5; done
@@ -138,7 +140,7 @@ git add docs/API.md && git commit -m "API doc: grid mode verified end to end on 
 
 ---
 
-### Task 2: API public mode: settings, hosts, grid-only, question length
+### Task 2: API public mode: settings, hosts, collaborative-only, question length
 
 **Files:**
 - Modify: `slac_assistant/api.py` (`create_app`, `start`, `followup`; new `Settings`)
@@ -148,7 +150,7 @@ git add docs/API.md && git commit -m "API doc: grid mode verified end to end on 
 - Produces:
   - `Settings` dataclass: `public: bool, allowed_hosts: list[str], daily_runs: int, visitor_runs: int, salt: str`
   - `load_settings(environ=os.environ) -> Settings`; raises `RuntimeError('INVESTIGATOR_VISITOR_SALT is required in public mode')` when public and salt is empty.
-  - Public-mode 400s: `detail='Only grid investigations run on the public demo.'` and `detail='Questions are limited to 500 characters on the public demo.'`
+  - Public-mode 400s: `detail='Only collaborative (model-backed grid) investigations run on the public demo.'` and `detail='Questions are limited to 500 characters on the public demo.'`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -183,7 +185,7 @@ def client_for(app, ip='127.0.0.1', forwarded=None, host='demo.sslip.io'):
     return client
 
 
-GRID = {'event_id': 'slac-001', 'mode': 'grid', 'question': 'Was the beam disturbed?'}
+GRID = {'event_id': 'slac-001', 'mode': 'collaborative', 'question': 'Was the beam disturbed?'}
 
 
 def test_public_mode_is_off_by_default(monkeypatch):
@@ -203,11 +205,11 @@ def test_public_rejects_unknown_host(tmp_path, monkeypatch):
         assert client.get('/api/v1/events').status_code == 400
 
 
-def test_public_accepts_only_grid(tmp_path, monkeypatch):
+def test_public_accepts_only_collaborative(tmp_path, monkeypatch):
     with client_for(public_app(tmp_path, monkeypatch), forwarded='198.51.100.7') as client:
-        response = client.post('/api/v1/investigations', json={**GRID, 'mode': 'collaborative'})
+        response = client.post('/api/v1/investigations', json={**GRID, 'mode': 'grid'})
         assert response.status_code == 400
-        assert response.json()['detail'] == 'Only grid investigations run on the public demo.'
+        assert response.json()['detail'] == 'Only collaborative (model-backed grid) investigations run on the public demo.'
 
 
 def test_public_question_limit_is_500(tmp_path, monkeypatch):
@@ -258,14 +260,14 @@ In `create_app`, first line: `settings = load_settings()`. Replace the TrustedHo
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver', *settings.allowed_hosts])
 ```
 
-Add a helper inside `create_app` and call it from `start` (with `request.mode`, `request.question.strip()`) and `followup` (with `'grid'`, `request.question`):
+Add a helper inside `create_app` and call it from `start` (with `request.mode`, `request.question.strip()`) and `followup` (with `'collaborative'`, `request.question`):
 
 ```python
     def check_public(mode, question):
         if not settings.public:
             return
-        if mode != 'grid':
-            raise HTTPException(400, detail='Only grid investigations run on the public demo.')
+        if mode != 'collaborative':
+            raise HTTPException(400, detail='Only collaborative (model-backed grid) investigations run on the public demo.')
         if len(question) > PUBLIC_QUESTION_LIMIT:
             raise HTTPException(400, detail='Questions are limited to 500 characters on the public demo.')
 ```
@@ -279,7 +281,7 @@ Expected: all pass (existing tests unchanged).
 
 ```bash
 git add slac_assistant/api.py tests/test_api_public.py
-git commit -m "API public mode: env settings, host allowlist, grid only, 500-char questions"
+git commit -m "API public mode: env settings, host allowlist, collaborative only, 500-char questions"
 ```
 
 ---
@@ -499,7 +501,7 @@ In `create_app`, routes become (rename the body param so `Request` can be inject
 
     @app.post('/api/v1/series/{series_id}/follow-ups', status_code=202, response_model=StatusResponse)
     def followup(series_id: str, body: FollowupRequest, http_request: Request):
-        check_public('grid', body.question)
+        check_public('collaborative', body.question)
         visitor, caps = caps_for(http_request)
         return submit(store.enqueue(series_id=series_id, question=body.question, visitor=visitor, caps=caps))
 
@@ -519,7 +521,7 @@ Expected: all pass (86 existing + the new public tests).
 
 - [ ] **Step 5: Document in `docs/API.md`**
 
-Add a `## Public mode` section after "Deployment, credentials and ownership": the env vars (`INVESTIGATOR_PUBLIC`, `INVESTIGATOR_ALLOWED_HOSTS`, `INVESTIGATOR_CORS_ORIGINS`, `INVESTIGATOR_VISITOR_SALT`, `INVESTIGATOR_DAILY_RUNS`, `INVESTIGATOR_VISITOR_RUNS`), grid-only, 500 characters, the three 429 codes with their exact messages, the day reset (midnight Pacific), the 15-minute stale rule, hashed visitor ids, and the `/api/v1/limits` shape. Add `/api/v1/limits` to the endpoint table. Edit the paragraph saying "This service is not a hosted backend" to: "Hosted only in public mode behind Caddy; see docs/DEPLOY.md."
+Add a `## Public mode` section after "Deployment, credentials and ownership": the env vars (`INVESTIGATOR_PUBLIC`, `INVESTIGATOR_ALLOWED_HOSTS`, `INVESTIGATOR_CORS_ORIGINS`, `INVESTIGATOR_VISITOR_SALT`, `INVESTIGATOR_DAILY_RUNS`, `INVESTIGATOR_VISITOR_RUNS`), collaborative-only, 500 characters, the three 429 codes with their exact messages, the day reset (midnight Pacific), the 15-minute stale rule, hashed visitor ids, and the `/api/v1/limits` shape. Add `/api/v1/limits` to the endpoint table. Edit the paragraph saying "This service is not a hosted backend" to: "Hosted only in public mode behind Caddy; see docs/DEPLOY.md."
 
 - [ ] **Step 6: Commit**
 
@@ -570,12 +572,12 @@ test('local origins keep the loopback API and the 4,000-character limit',()=>{
 });
 test('429 limit replies become LimitError, not an uncertain submission',async()=>{
  const api=new InvestigationAPI({pageOrigin:PAGES,publicAPI:API,fetchImpl:reply(429,{detail:{code:'daily_limit',message:'Lots of people tried this today'}})});
- await assert.rejects(api.start('slac-001',{mode:'grid',question:'q'}),e=>e instanceof LimitError&&!(e instanceof SubmissionUncertainError)&&e.code==='daily_limit'&&/Lots of people/.test(e.message));
+ await assert.rejects(api.start('slac-001',{mode:'collaborative',question:'q'}),e=>e instanceof LimitError&&!(e instanceof SubmissionUncertainError)&&e.code==='daily_limit'&&/Lots of people/.test(e.message));
  assert.equal(api.submitting,false);
 });
 test('public questions over 500 characters are refused before any request',()=>{
  const api=new InvestigationAPI({pageOrigin:PAGES,publicAPI:API,fetchImpl:no});
- assert.throws(()=>api.start('slac-001',{mode:'grid',question:'x'.repeat(501)}),/500/);
+ assert.throws(()=>api.start('slac-001',{mode:'collaborative',question:'x'.repeat(501)}),/500/);
  assert.throws(()=>api.followup('series','x'.repeat(501)),/500/);
 });
 test('limits() reads the limits endpoint on the public API',async()=>{
@@ -695,7 +697,7 @@ export function limitBanner(error){return `<div class="live-error limit-banner" 
 
 `live.js` changes:
 1. State: add `limits:null, limitError:null` to `live`.
-2. `submit()`: send `mode:'grid'` (both the first call and the 422 fallback keep `mode:'grid'`). In the `catch`: `if(e instanceof LimitError){live.limitError=e;}else{live.error=e.message;...existing...}`. In `finally`: `try{live.limits=await live.api.limits();}catch{}` before `render()`.
+2. `submit()`: keep `mode:'collaborative'` (that is the model-backed grid; `grid` is the no-model variant). No change needed. In the `catch`: `if(e instanceof LimitError){live.limitError=e;}else{live.error=e.message;...existing...}`. In `finally`: `try{live.limits=await live.api.limits();}catch{}` before `render()`.
 3. `render()`: when `live.api.public`, use these labels instead of the local ones: eyebrow `LIVE RUN / ${id}`, subtitle "Ask your own question. A live Flower grid on Groq gpt-oss-20b answers it; nothing here is pre-recorded.", meta "Execution" → "Live run · Groq gpt-oss-20b on self-hosted Flower", event button subtitle "Live event". Under the page heading add `${live.limits?`<p class="small muted">${live.limits.runs_left_today} live runs left today · you have ${live.limits.visitor_runs_left}</p>`:''}` and `${live.limitError?limitBanner(live.limitError):''}`. Textarea `maxlength` uses `${live.api.maxQuestion}`. Disable Start when `live.limits&&(live.limits.runs_left_today===0||live.limits.visitor_runs_left===0)`. Clear `live.limitError` at the start of each `submit`.
 4. `initLive({onUnavailable}={})`: build `live.api=new InvestigationAPI()`; if `live.api.public`, first `try{live.limits=await live.api.limits();}catch(e){onUnavailable?.('Live runs are unavailable right now, so here are the saved runs.');return;}`. Set the mode pill to `Live · Groq on Flower` when public, keep "Local live execution" otherwise. The replay-notice link becomes `href="?mode=replay"`.
 
