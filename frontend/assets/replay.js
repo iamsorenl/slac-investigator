@@ -44,24 +44,50 @@ const kb = n => `${(Number(n) / 1024).toFixed(1)} KB`;
 export function finalSource(final) {
   return (final?.data_limitations || []).some(l => /model final was not accepted|No model was called/.test(l)) ? 'deterministic combine' : 'model';
 }
-const DIMENSIONS = [['beam_disturbance', 'Beam disturbance corroborated?'], ['unique_cause', 'Unique cause established?']];
-// Chat-style transcript of a grid run: human question, orchestrator delegations, node replies, final verdict.
-// `report` is omitted until the run is complete; the verdict is only shown from an accepted report.
-export function conversationHTML(events, {question = '', report = null, eventId = ''} = {}) {
-  const msg = (who, body, cls) => `<li class="chat-msg ${cls}"><p class="chat-who">${escapeHTML(who)}</p>${body}</li>`;
-  const out = [msg('You', question ? `<p>${escapeHTML(question)}</p>` :
-    `<p>Investigate event ${escapeHTML(eventId || events.find(e => e.event_id)?.event_id || '')}.</p><p class="small muted">The question text was not saved with this run.</p>`, 'chat-human')];
-  for (const e of events) {
-    if (e.kind === 'delegation' && e.instrument) out.push(msg(`Orchestrator → ${pretty(e.instrument).toUpperCase()} node`,
-      `<p>${escapeHTML(e.question || e.task || `Run the ${pretty(e.instrument)} checks.`)}</p><p class="small muted">Node <span class="code">${escapeHTML(e.node_id)}</span></p>`, 'chat-orchestrator'));
-    else if (e.kind === 'node_report') out.push(msg(`${pretty(e.instrument).toUpperCase()} node`,
-      `<p><span class="status-tag">${escapeHTML(pretty(e.assessment))}</span> <span class="small muted">${escapeHTML(ROLE_SOURCE_LABEL[e.role_source] || pretty(e.role_source))}</span></p><p>${escapeHTML(e.observation)}</p><p class="small muted">Sent ${kb(e.payload_bytes)}, holds ${kb(e.raw_bytes_held)}</p>`, 'chat-node'));
-  }
-  if (report?.final) {
-    const f = report.final, shared = report.data_shared;
-    out.push(msg(`Orchestrator · final (${finalSource(f)})`,
-      `<dl class="chat-verdict">${DIMENSIONS.filter(([k]) => f[k]).map(([k, title]) => `<dt>${title}</dt><dd><strong>${escapeHTML(pretty(f[k].status))}</strong> · ${escapeHTML(f[k].rationale)}</dd>`).join('')}</dl>` +
-      (shared ? `<p class="small muted">${Number(shared.percent_shared).toFixed(1)}% of raw data shared</p>` : ''), 'chat-orchestrator chat-final'));
-  }
-  return `<ol class="chat" aria-label="Conversation between the operator and the agents">${out.join('')}</ol>`;
+// Plain-English labels for a non-expert reader. The model's own words are shown unchanged under "Why?".
+// tone drives colour, but the label text always carries the meaning.
+export const LABELS = {
+  beam_disturbance: {corroborated:['Yes, the beam was disturbed','alert'], not_corroborated:['No, the beam looked normal','ok'], insufficient_evidence:["Can't tell from this data",'unsure'], not_assessed:['Not checked','unsure']},
+  unique_cause: {established:['Yes, the klystron caused it','alert'], not_established:['Not proven','unsure'], insufficient_evidence:["Can't tell from this data",'unsure'], not_assessed:['Not checked','unsure']},
+  node: {suspicious:['Something looks off','alert'], normal:['Looks normal','ok'], insufficient_evidence:['Not enough data to say','unsure']},
+};
+export function label(kind, value) {
+  const [text, tone] = LABELS[kind]?.[value] || [pretty(value), 'unsure'];
+  return `<span class="verdict tone-${tone}">${escapeHTML(text)}</span>`;
+}
+export const INSTRUMENTS = {rf:['Klystron','the power source'], ltu:['Beam, mid-line','LTU position and charge monitors'], dump:['Beam, end of line','monitors at the beam dump']};
+export const CASES = {
+  'slac-001': {title:'A glitch the beam felt', summary:'Klystron power jumped and the beam dipped at the same moment.'},
+  'slac-003': {title:'A glitch the beam ignored', summary:'Klystron power wobbled, but the beam looked fine.'},
+};
+const QUESTIONS = [['beam_disturbance', 'Was the beam disturbed?'], ['unique_cause', 'Did the klystron cause it?']];
+const unquote = s => String(s ?? '').trim().replace(/^["']+|["']+$/g, '');
+const items = values => `<ul>${values.map(v => `<li>${escapeHTML(v)}</li>`).join('')}</ul>`;
+// The investigation as a story: the agents check, the answer, what's still unknown.
+// `events` may be a prefix (replay step or live progress); the answer only shows from an accepted report.
+export function storyHTML(events, {report = null} = {}) {
+  const asked = events.filter(e => e.kind === 'delegation' && e.instrument).map(e => e.instrument);
+  const reports = new Map(events.filter(e => e.kind === 'node_report').map(e => [e.instrument, e]));
+  const order = [...new Set([...asked, ...reports.keys()])];
+  const shared = events.find(e => e.kind === 'data_shared') || report?.data_shared;
+  const rows = order.map(id => {
+    const [name, what] = INSTRUMENTS[id] || [pretty(id), ''], r = reports.get(id);
+    return `<li class="agent-row"><div class="agent-name"><strong>${escapeHTML(name)}</strong><span>${escapeHTML(what)}</span></div>` +
+      `<div class="agent-result">${r ? `${label('node', r.assessment)}<p>${escapeHTML(unquote(r.observation))}</p>` : '<span class="verdict tone-pending">Checking…</span>'}</div></li>`;
+  }).join('');
+  const agents = `<section class="story-card" aria-labelledby="s-agents"><h2 id="s-agents"><span class="step">2</span> The agents check</h2>` +
+    `<p class="muted">Each agent sits next to one instrument and only sees that instrument's data.</p>` +
+    (rows ? `<ol class="agent-list">${rows}</ol>` : '<p class="empty">Not started yet.</p>') +
+    (shared ? `<p class="shared-line"><strong>Only ${Number(shared.percent_shared).toFixed(1)}%</strong> of the raw data left the instruments${shared.payload_bytes ? ` (${kb(shared.payload_bytes)} of ${kb(shared.raw_bytes_held)})` : ''}. The agents sent summaries, not recordings.</p>` : '') + `</section>`;
+  const f = report?.final;
+  const answer = `<section class="story-card answer-card" aria-labelledby="s-answer"><h2 id="s-answer"><span class="step">3</span> The answer</h2>` + (f?.beam_disturbance ?
+    `<dl class="answer-list">${QUESTIONS.map(([k, q]) => `<div><dt>${q}</dt><dd>${label(k, f[k].status)}</dd></div>`).join('')}</dl>` +
+    (finalSource(f) === 'model' ? '' : '<p class="small muted">The model\'s answer was not accepted, so this answer was combined directly from the agents\' reports.</p>') +
+    `<details class="why"><summary>Why?</summary>${QUESTIONS.map(([k, q]) => `<h3>${q}</h3><p>${escapeHTML(f[k].rationale)}</p>`).join('')}` +
+    `<h3>Evidence for</h3>${items(f.supporting_evidence || [])}<h3>Evidence against or caveats</h3>${(f.conflicting_evidence || []).length ? items(f.conflicting_evidence) : '<p>None listed.</p>'}</details>`
+    : `<p class="empty">${order.length ? 'The lead agent is weighing the reports…' : 'Appears once the agents report back.'}</p>`) + `</section>`;
+  const unknown = f ? `<section class="story-card" aria-labelledby="s-unknown"><h2 id="s-unknown"><span class="step">4</span> Still unknown</h2>` +
+    `<p><strong>What they'd check next:</strong> ${escapeHTML(f.requested_next_check || 'Nothing further requested.')}</p><p class="small muted">This is a suggestion; the check was not run.</p>` +
+    ((f.data_limitations || []).length ? `<details><summary>Limits of this data (${f.data_limitations.length})</summary>${items(f.data_limitations)}</details>` : '') + `</section>` : '';
+  return agents + answer + unknown;
 }

@@ -4,20 +4,6 @@
   "description": "Saved runs. Opening or replaying one does not execute a model.",
   "events": [
     {
-      "id": "slac-001",
-      "station": "KLYS:LI29:11",
-      "file": "./data/slac-001.json",
-      "run_count": 2,
-      "note": "Prototype run: Flower runtime, OpenAI model (not a Flower-hosted model)"
-    },
-    {
-      "id": "slac-003",
-      "station": "KLYS:LI21:81",
-      "file": "./data/slac-003.json",
-      "run_count": 1,
-      "note": "Prototype run: Flower runtime, OpenAI model (not a Flower-hosted model)"
-    },
-    {
       "id": "slac-001-grid",
       "station": "KLYS:LI29:11",
       "file": "./data/slac-001-grid.json",
@@ -36,7 +22,8 @@
       "station": "KLYS:LI29:11",
       "file": "./data/slac-001-endeavor.json",
       "run_count": 1,
-      "note": "Grid run on Flower Endeavor (flwrlabs/endeavor-1.0)"
+      "note": "Grid run on Flower Endeavor (flwrlabs/endeavor-1.0)",
+      "variant_of": "slac-001-grid"
     }
   ]
 }

@@ -1,4 +1,4 @@
-# Fieldnote — GitHub Pages frontend
+# Cut Us Some SLAC — GitHub Pages frontend
 
 Static operator interface for SLAC RF investigations. Frontend ownership only; backend/authentication and Flower services belong to the other window.
 

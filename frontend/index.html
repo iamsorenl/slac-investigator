@@ -2,27 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light"><meta name="description" content="Human-supervised investigation of archived SLAC RF events. Review measured signals, specialist findings and traceable evidence.">
-  <title>Fieldnote · RF investigations</title>
-  <link rel="stylesheet" href="./assets/styles.css"><script type="module" src="./assets/app.js"></script>
+  <meta name="color-scheme" content="light"><meta name="description" content="Three AI agents investigate whether a klystron glitch disturbed the SLAC electron beam, using real SLAC data.">
+  <title>Cut Us Some SLAC · beam investigation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap"><link rel="stylesheet" href="./assets/styles.css"><script type="module" src="./assets/app.js"></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to investigation</a>
-<header class="topbar"><a class="brand" href="./"><span class="brandmark" aria-hidden="true">∿</span> fieldnote<span class="brand-divider"></span><span class="brand-context">RF INVESTIGATIONS</span></a><div class="top-meta"><span class="mode-pill"><i></i> Saved-run replay</span><span class="prototype">FLOWER PROTOTYPE</span></div></header>
-<div class="shell">
-<aside class="sidebar" aria-label="Event selection">
-  <div class="workspace-label">INVESTIGATION LIBRARY</div><h2>Archived events</h2><p class="muted small">Real SLAC measurements.<br>Saved Flower investigations.</p>
-  <nav id="event-list" aria-label="Available events"><p class="muted">Loading events…</p></nav>
-  <div class="side-note"><span class="eyebrow">HUMAN SUPERVISION</span><p>Evidence supports a decision.<br>The operator makes it.</p><span class="small muted">Read-only tools. No machine controls.</span></div>
-</aside>
+<header class="topbar"><a class="brand" href="./"><span class="brandmark" aria-hidden="true">∿</span> Cut Us Some SLAC</a></header>
 <main id="main" tabindex="-1">
-  <div class="replay-notice"><span class="notice-icon" aria-hidden="true">↺</span><div><strong>Viewing a saved investigation</strong><span>These findings came from a real Flower run. Replaying them makes no new model calls.</span></div><button class="text-button" id="connection-button" aria-expanded="false" aria-controls="connection-panel">Live connection <span aria-hidden="true">↗</span></button></div>
-  <section id="connection-panel" class="connection-panel" hidden><h3>Live runs aren't on yet</h3><p>For now you can step through saved runs of real investigations. Live runs, where you ask your own question, are coming once the free backend is up.</p></section>
+  <section class="intro"><h1>Did a power glitch knock SLAC's electron beam off course?</h1><p>SLAC accelerates electrons down a 3 km line using klystrons, big radio-frequency power sources. When one glitches, did the beam feel it? Three AI agents each check one instrument's data, then a lead agent gives a two-part answer. The raw data never leaves the instruments.</p></section>
+  <nav id="event-list" class="cases" aria-label="Pick a case"><p class="muted">Loading cases…</p></nav>
   <div id="error" role="alert" hidden></div>
-  <div id="content" aria-busy="true"><div class="loading">Opening the evidence workspace…</div></div>
-  <footer>Built at the Flower Collaborative Agent Hackathon (Stanford, 2026) by the slac-investigator team · <a href="https://github.com/GavinRS/slac-investigator">original repo</a> · SLAC public archive · Operator review required</footer>
+  <div id="content" aria-busy="true"><div class="loading">Opening the investigation…</div></div>
+  <footer>Built at the Flower Collaborative Agent Hackathon (Stanford, 2026) by the slac-investigator team · <a href="https://github.com/GavinRS/slac-investigator">original repo</a> · Data: SLAC public archive</footer>
 </main>
-</div>
 <dialog id="evidence-dialog" aria-labelledby="evidence-dialog-title"><div class="dialog-top"><div><span class="eyebrow">DETERMINISTIC TOOL RESULT</span><h2 id="evidence-dialog-title">Evidence</h2></div><button class="icon-button" id="close-evidence" aria-label="Close evidence">×</button></div><div id="evidence-content"></div></dialog>
 </body>
 </html>
