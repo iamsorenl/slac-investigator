@@ -88,7 +88,7 @@ export async function enterLive({onUnavailable}={}){
   live.active=true;
   if(started){if(live.api.public)try{live.limits=await live.api.limits();}catch{}render();return;}
   live.api=new InvestigationAPI();
-  if(live.api.public){try{live.limits=await live.api.limits();}catch(e){live.active=false;onUnavailable?.('Live runs are unavailable right now, so here are the saved runs.');return;}}
+  if(live.api.public){try{live.limits=await live.api.limits();}catch(e){live.active=false;onUnavailable?.('The live server is waking up or offline. Try again in a minute; the saved runs are here meanwhile.');return;}}
   const catalog=await live.api.events();live.events=catalog.event_ids;started=true;
   document.addEventListener('click',async e=>{
     const b=e.target.closest('button');if(!b)return;
