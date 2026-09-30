@@ -1,12 +1,67 @@
 # Deployment: SLAC Investigator Live Demo
 
-Host the FastAPI + Flower grid on a public Oracle Always Free Ubuntu 24.04 arm64 VM behind Caddy.
+The live backend (Flower SuperLink, the rf/ltu/dump SuperNodes, and the public API) runs in an LXD container on a home Linux box. Tailscale Funnel gives it a public HTTPS URL, so no ports are opened on the router and nothing costs money. The site on GitHub Pages calls it via `PUBLIC_API` in `frontend/assets/config.js`. When the box is off, the site says the live server is offline and shows the saved runs.
 
-## 1. Oracle Account
+Current host: container `slac-demo` on a home Linux box, public at `https://slac-demo.tail88a93f.ts.net`.
+
+## Home server (LXD + Tailscale Funnel)
+
+### First setup
+
+1. On the host, once (needs sudo): `sudo usermod -aG lxd $USER`, log in again, then `lxd init --auto --storage-backend=dir` if `lxc storage list` is empty.
+2. Create the container. It starts with the host:
+   ```bash
+   lxc launch ubuntu:24.04 slac-demo -c boot.autostart=true
+   ```
+3. Install the app (run on your laptop from the repo). The first run clones and installs, then stops because `.env` is missing:
+   ```bash
+   ssh <host> 'lxc exec slac-demo -- bash -s slac-demo.<tailnet>.ts.net' < deploy/lxd/setup.sh
+   ```
+   The hostname is the container's Tailscale name. Before you know it, pass any placeholder; step 5 reruns this.
+4. Copy the Groq block from your local `.env` without printing it, then rerun step 3 (services and Tailscale get installed):
+   ```bash
+   grep -E '^(FLWR_MODEL_API_ENDPOINT|FLWR_MODEL_API_KEY|INVESTIGATOR_MODEL)=' .env | \
+     ssh <host> 'lxc exec slac-demo -- sh -c "umask 077; cat > /opt/slac-investigator/.env"'
+   ```
+5. Sign Tailscale in and turn on Funnel (inside the container: `lxc exec slac-demo -- bash`):
+   ```bash
+   tailscale up --hostname=slac-demo    # open the printed link and sign in
+   tailscale funnel --bg 8080           # first time: open the printed link to allow Funnel on the tailnet
+   ```
+   Then rerun step 3 with the real `*.ts.net` name, and in the Tailscale console turn off key expiry for the machine (otherwise it drops off after 180 days).
+6. Check from anywhere: `curl https://slac-demo.<tailnet>.ts.net/api/v1/limits`. A new Funnel host can fail TLS for a minute while the relays pick up its certificate.
+
+Public mode runs `collaborative` only, capped at 15 runs a day and 3 per visitor. Funnel forwards each visitor's address in `X-Forwarded-For` from 127.0.0.1, which the API trusts, so visitors are counted separately.
+
+### Redeploy after a push
+
+```bash
+ssh <host> 'lxc exec slac-demo -- bash -s slac-demo.<tailnet>.ts.net' < deploy/lxd/setup.sh
+```
+
+### Logs
+
+```bash
+ssh <host> lxc exec slac-demo -- journalctl -u slac-grid -u slac-api -f
+```
+
+### Change the caps
+
+Edit `/opt/slac-investigator/api.env` in the container (`INVESTIGATOR_DAILY_RUNS`, `INVESTIGATOR_VISITOR_RUNS`, `INVESTIGATOR_CORS_ORIGINS`), then `systemctl restart slac-api`. The run counter is in `artifacts/api/state.sqlite3`, so restarts don't reset it.
+
+### Take it offline
+
+Inside the container: `tailscale funnel --https=443 off` (public URL gone, services keep running) or `systemctl stop slac-api`. The site falls back to the saved runs either way.
+
+## Alternative: a public VM (Oracle Always Free, needs capacity)
+
+Host the FastAPI + Flower grid on a public Oracle Always Free Ubuntu 24.04 arm64 VM behind Caddy. In 2026-09 Oracle had no A1 capacity for weeks.
+
+### 1. Oracle Account
 
 Sign up at [cloud.oracle.com](https://cloud.oracle.com). The card is for identity verification only. Stay on "Always Free" and never click "Upgrade to Pay As You Go".
 
-## 2. Create the VM
+### 2. Create the VM
 
 1. Navigate to **Compute → Instances → Create**
 2. **Image:** Canonical Ubuntu 24.04 (aarch64)
@@ -16,20 +71,20 @@ Sign up at [cloud.oracle.com](https://cloud.oracle.com). The card is for identit
 4. **SSH:** Paste your SSH public key (`~/.ssh/id_ed25519.pub`)
 5. **Network:** Assign a public IPv4 address
 
-## 3. Open Ports in Oracle's Network
+### 3. Open Ports in Oracle's Network
 
 1. Navigate to **Networking → the VCN → default security list**
 2. Add ingress rules for:
    - **TCP 80** from `0.0.0.0/0`
    - **TCP 443** from `0.0.0.0/0`
 
-## 4. Host Name
+### 4. Host Name
 
 Convert the public IP to an sslip.io hostname. For example:
 - Public IP: `1.2.3.4`
 - sslip.io hostname: `1-2-3-4.sslip.io`
 
-## 5. First Setup
+### 5. First Setup
 
 1. SSH into the VM:
    ```bash
@@ -68,7 +123,7 @@ The script will:
 - Start services: `slac-grid`, `slac-api`, `caddy`
 - Verify the API is responding via HTTPS
 
-## Redeploy After a Push
+### Redeploy After a Push
 
 After pushing changes to the main branch:
 
@@ -78,7 +133,7 @@ ssh ubuntu@1.2.3.4 sudo /opt/slac-investigator/deploy/server/setup.sh 1-2-3-4.ss
 
 The script is idempotent and safe to rerun.
 
-## View Logs
+### View Logs
 
 Stream logs from both services:
 
@@ -86,7 +141,7 @@ Stream logs from both services:
 ssh ubuntu@1.2.3.4 sudo journalctl -u slac-grid -u slac-api -f
 ```
 
-## Change API Capabilities
+### Change API Capabilities
 
 Edit `/opt/slac-investigator/api.env` on the VM:
 - `INVESTIGATOR_DAILY_RUNS` — max runs per day (global)
@@ -99,7 +154,7 @@ Then restart the API:
 ssh ubuntu@1.2.3.4 sudo systemctl restart slac-api
 ```
 
-## If Oracle Reclaims the VM
+### If Oracle Reclaims the VM
 
 Oracle reclaims an Always Free VM when CPU, network AND memory all stay below 20% for 7 days. If this happens:
 
