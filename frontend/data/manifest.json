@@ -1,19 +1,21 @@
 {
   "schema": "frontend-replay-v1",
   "execution_source": "saved_run",
-  "description": "Historical real Flower runs. Opening or replaying does not execute a model.",
+  "description": "Saved runs. Opening or replaying one does not execute a model.",
   "events": [
     {
       "id": "slac-001",
       "station": "KLYS:LI29:11",
       "file": "./data/slac-001.json",
-      "run_count": 2
+      "run_count": 2,
+      "note": "Prototype run: Flower runtime, OpenAI model (not a Flower-hosted model)"
     },
     {
       "id": "slac-003",
       "station": "KLYS:LI21:81",
       "file": "./data/slac-003.json",
-      "run_count": 1
+      "run_count": 1,
+      "note": "Prototype run: Flower runtime, OpenAI model (not a Flower-hosted model)"
     },
     {
       "id": "slac-001-grid",

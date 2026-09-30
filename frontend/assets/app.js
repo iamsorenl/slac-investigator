@@ -1,6 +1,6 @@
 import {escapeHTML as h, validateReplay, pretty, nodeReportCard, dataSharedHeadline, conversationHTML, finalSource} from './replay.js';
 import {plot as drawPlot} from './charts.js';
-import {LOCAL_ORIGINS} from './api.js';
+import {LOCAL_ORIGINS,publicLiveAvailable} from './api.js';
 const $ = selector => document.querySelector(selector);
 const colors = ['#138993','#d49440','#686fb0','#c56e73'];
 const state = {manifest:null,event:null,runIndex:0,step:0,playing:false,timer:null,focus:false,loadVersion:0};
@@ -99,9 +99,14 @@ async function init(){try{
 if(LOCAL_ORIGINS.has(location.origin)){
   $('#connection-panel').innerHTML='<h3>Local development connection</h3><p>The backend contract is available. Live mode uses the local API on port 8080; provider credentials remain on the backend.</p><a class="button secondary" href="?mode=live">Open local live mode ↗</a><p class="small muted">Nothing runs until you explicitly start an investigation. GitHub Pages remains saved replay only.</p>';
 }
-if(new URLSearchParams(location.search).get('mode')==='live' && LOCAL_ORIGINS.has(location.origin)){
-  import('./live.js').then(m=>m.initLive()).catch(e=>{error(e.message);$('#content').setAttribute('aria-busy','false');$('#content').innerHTML='<section class="panel"><div class="assessment-body"><h2>Backend connection unavailable</h2><p>No investigation was submitted. The backend owner manages API availability; this page has not switched to replay.</p><a href="./">Open saved replay explicitly ↗</a></div></section>';$('#event-list').textContent='API connection unavailable.';});
+const params=new URLSearchParams(location.search);
+const wantLive=params.get('mode')!=='replay'&&((params.get('mode')==='live'&&LOCAL_ORIGINS.has(location.origin))||publicLiveAvailable());
+if(wantLive){
+  import('./live.js').then(m=>m.initLive({onUnavailable:message=>{error(message);init();}})).catch(e=>{
+    if(publicLiveAvailable()){error('Live runs are unavailable right now, so here are the saved runs.');init();return;}
+    error(e.message);$('#content').setAttribute('aria-busy','false');$('#content').innerHTML='<section class="panel"><div class="assessment-body"><h2>Backend connection unavailable</h2><p>No investigation was submitted. The backend owner manages API availability; this page has not switched to replay.</p><a href="./">Open saved replay explicitly ↗</a></div></section>';$('#event-list').textContent='API connection unavailable.';});
 }else{
-  if(new URLSearchParams(location.search).get('mode')==='live')error('Live execution is unavailable on this origin. This is saved-run replay; no backend was contacted.');
+  if(publicLiveAvailable())$('.replay-notice').insertAdjacentHTML('beforeend','<a class="text-button" href="./">Try it live ↗</a>');
+  if(params.get('mode')==='live')error('Live execution is unavailable on this origin. This is saved-run replay; no backend was contacted.');
   init();
 }

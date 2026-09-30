@@ -17,7 +17,7 @@ export class InvestigationAPI {
     if(url.origin!==this.baseURL||!url.pathname.startsWith('/api/v1/'))throw new Error('Backend returned an unexpected API link.');
     let response;
     try{response=await this.fetch(url.href,{method,credentials:'omit',headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000)});}
-    catch(error){if(method==='POST')throw new SubmissionUncertainError('Submission response was lost. Work may already be running. It was not resubmitted; ask the backend owner to inspect the queue.');throw new Error('Local API connection failed. Saved replay has not been substituted.');}
+    catch(error){if(method==='POST')throw new SubmissionUncertainError('Submission response was lost. Work may already be running. It was not resubmitted; ask the backend owner to inspect the queue.');throw new Error(`${this.public?'Could not reach the live server.':'Local API connection failed.'} Saved replay has not been substituted.`);}
     let payload;
     try{payload=await response.json();}catch(error){
       if(method==='POST'&&response.ok)throw new SubmissionUncertainError('The backend accepted the request but its response could not be read. Do not resubmit; ask the backend owner to locate the run.');

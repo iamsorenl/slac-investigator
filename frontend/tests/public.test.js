@@ -28,3 +28,9 @@ test('limits() reads the limits endpoint on the public API',async()=>{
  let seen;const api=new InvestigationAPI({pageOrigin:PAGES,publicAPI:API,fetchImpl:async(url)=>{seen=url;return {ok:true,status:200,json:async()=>({public:true,runs_left_today:12,visitor_runs_left:3,busy:false})};}});
  assert.equal((await api.limits()).runs_left_today,12);assert.equal(seen,API+'/api/v1/limits');
 });
+import {limitBanner} from '../assets/live.js';
+test('limit banners show the server message and a link to the saved runs',()=>{
+ const html=limitBanner({code:'visitor_limit',message:"You've used your 3 live runs for today"});
+ assert.match(html,/You(&#39;|')ve used your 3 live runs/);assert.match(html,/href="\?mode=replay"/);
+ assert.doesNotMatch(limitBanner({code:'busy',message:'<script>'}),/<script>/);
+});
