@@ -864,7 +864,7 @@ Expected: `ok`; no shellcheck errors (warnings about `sudo -u ... bash -c` quoti
 
 Contents, in order:
 1. **Oracle account:** sign up at cloud.oracle.com. The card is for identity verification; stay on "Always Free" and never click "Upgrade to Pay As You Go".
-2. **Create the VM:** Compute → Instances → Create. Image: Canonical Ubuntu 24.04 (aarch64). Shape: `VM.Standard.A1.Flex`, 2 OCPU, 12 GB (inside the Always Free 4 OCPU / 24 GB). Paste your SSH public key (`~/.ssh/id_ed25519.pub`). Assign a public IPv4.
+2. **Create the VM:** Compute → Instances → Create. Image: Canonical Ubuntu 24.04 (aarch64). Shape: `VM.Standard.A1.Flex`, **1 OCPU, 4 GB** (Always Free allows 2 OCPU / 12 GB total). Keep it small on purpose: Oracle reclaims an Always Free VM when CPU, network AND memory all stay under 20% for 7 days; the stack uses ~1.5 GB, so on 4 GB memory stays above 20% and the VM is not reclaimed. Paste your SSH public key (`~/.ssh/id_ed25519.pub`). Assign a public IPv4.
 3. **Open ports in Oracle's network:** Networking → the VCN → default security list → add ingress rules for TCP 80 and 443 from `0.0.0.0/0`.
 4. **Host name:** public IP `1.2.3.4` → `1-2-3-4.sslip.io`.
 5. **First setup:** `ssh ubuntu@1.2.3.4`, `sudo git clone https://github.com/iamsorenl/slac-investigator /opt/slac-investigator`, create `/opt/slac-investigator/.env` with the three Groq lines (endpoint, key, model) yourself, then `sudo /opt/slac-investigator/deploy/server/setup.sh 1-2-3-4.sslip.io`.
