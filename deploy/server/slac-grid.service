@@ -1,0 +1,14 @@
+[Unit]
+Description=SLAC grid: Flower SuperLink + rf, ltu, dump SuperNodes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=slac
+WorkingDirectory=/opt/slac-investigator
+ExecStart=/opt/slac-investigator/scripts/start_grid.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

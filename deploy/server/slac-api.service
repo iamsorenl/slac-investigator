@@ -1,0 +1,15 @@
+[Unit]
+Description=SLAC investigation API (public mode)
+After=slac-grid.service
+Requires=slac-grid.service
+
+[Service]
+User=slac
+WorkingDirectory=/opt/slac-investigator
+EnvironmentFile=/opt/slac-investigator/api.env
+ExecStart=/opt/slac-investigator/scripts/start_api.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
