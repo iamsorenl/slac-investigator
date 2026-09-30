@@ -29,7 +29,7 @@ printf '%s {\n\treverse_proxy 127.0.0.1:8080\n}\n' "$HOST" > /etc/caddy/Caddyfil
 
 # Oracle's Ubuntu images block everything but SSH in iptables; open 80/443 once.
 for port in 80 443; do
-  iptables -C INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null || iptables -I INPUT 5 -p tcp --dport $port -j ACCEPT
+  iptables -C INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport $port -j ACCEPT
 done
 netfilter-persistent save
 

@@ -99,6 +99,7 @@ async function init(){try{
 if(LOCAL_ORIGINS.has(location.origin)){
   $('#connection-panel').innerHTML='<h3>Local development connection</h3><p>The backend contract is available. Live mode uses the local API on port 8080; provider credentials remain on the backend.</p><a class="button secondary" href="?mode=live">Open local live mode ↗</a><p class="small muted">Nothing runs until you explicitly start an investigation. GitHub Pages remains saved replay only.</p>';
 }
+if(publicLiveAvailable())$('#connection-panel').innerHTML='<p>Live runs are on. <a href="./">Open the live page</a> to ask your own question.</p>';
 const params=new URLSearchParams(location.search);
 const wantLive=params.get('mode')!=='replay'&&((params.get('mode')==='live'&&LOCAL_ORIGINS.has(location.origin))||publicLiveAvailable());
 if(wantLive){

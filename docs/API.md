@@ -4,7 +4,7 @@ Authoritative implementation: `slac_assistant/api.py`. Start with `./scripts/sta
 
 ## Deployment, credentials and ownership
 
-This is a **local, single-user development API**, bound to loopback, with **one Uvicorn worker**. There is no frontend login or public authentication endpoint. Default CORS origins are `http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:5173`, and `http://127.0.0.1:5173`. `INVESTIGATOR_CORS_ORIGINS` can set an explicit comma-separated list. Cookies are not used; allowed methods are GET/POST and the allowed request header is Content-Type. Only localhost/127.0.0.1 hosts are accepted. CORS is not authentication.
+By default (public mode off) this is a **local, single-user development API**, bound to loopback, with **one Uvicorn worker**. There is no frontend login or public authentication endpoint. Default CORS origins are `http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:5173`, and `http://127.0.0.1:5173`. `INVESTIGATOR_CORS_ORIGINS` can set an explicit comma-separated list. Cookies are not used; allowed methods are GET/POST and the allowed request header is Content-Type. Only localhost/127.0.0.1 hosts are accepted (unless public mode adds hosts). CORS is not authentication.
 
 **Hosted only in public mode behind Caddy; see docs/DEPLOY.md.**
 
@@ -35,6 +35,8 @@ The three codes and their exact messages:
 - `busy`: "Someone else's run is in progress. Runs take a minute or two, so try again shortly."
 
 Only one job may be `queued`/`running` at a time; a second live start or follow-up while one is active gets `busy`. A job's row is only counted as active while its `updated_at` is within the last 15 minutes; a stalled record older than that no longer blocks new runs. Daily and per-visitor counters reset at midnight **America/Los_Angeles** (`day_start`), computed in UTC so it is DST-correct.
+
+**Failed runs count.** A run that fails still counts toward the visitor and daily caps; this is a deliberate spend guard.
 
 **Visitor identity.** A visitor is a salted SHA-256 hash (first 16 hex characters) of the caller's IP; the raw IP is never persisted. Behind the Caddy reverse proxy the API trusts `X-Forwarded-For` only when the direct peer is `127.0.0.1`/`::1`, taking the last (right-most) address Caddy appended; otherwise the header is ignored and the direct peer IP is used.
 

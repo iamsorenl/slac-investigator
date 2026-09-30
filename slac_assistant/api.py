@@ -296,7 +296,8 @@ def create_app(db_path=None, runner=run_flower):
         yield
         executor.shutdown(wait=True)
 
-    app = FastAPI(title='SLAC Investigation API', version='1.0.0', lifespan=lifespan)
+    app = FastAPI(title='SLAC Investigation API', version='1.0.0', lifespan=lifespan,
+                  **({'docs_url': None, 'redoc_url': None, 'openapi_url': None} if settings.public else {}))
     app.state.store = store
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver', *settings.allowed_hosts])
     origins = os.environ.get('INVESTIGATOR_CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173').split(',')

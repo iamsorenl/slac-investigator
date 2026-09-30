@@ -2,11 +2,11 @@
 
 Host the FastAPI + Flower grid on a public Oracle Always Free Ubuntu 24.04 arm64 VM behind Caddy.
 
-## Oracle Account
+## 1. Oracle Account
 
 Sign up at [cloud.oracle.com](https://cloud.oracle.com). The card is for identity verification only. Stay on "Always Free" and never click "Upgrade to Pay As You Go".
 
-## Create the VM
+## 2. Create the VM
 
 1. Navigate to **Compute → Instances → Create**
 2. **Image:** Canonical Ubuntu 24.04 (aarch64)
@@ -16,20 +16,20 @@ Sign up at [cloud.oracle.com](https://cloud.oracle.com). The card is for identit
 4. **SSH:** Paste your SSH public key (`~/.ssh/id_ed25519.pub`)
 5. **Network:** Assign a public IPv4 address
 
-## Open Ports in Oracle's Network
+## 3. Open Ports in Oracle's Network
 
 1. Navigate to **Networking → the VCN → default security list**
 2. Add ingress rules for:
    - **TCP 80** from `0.0.0.0/0`
    - **TCP 443** from `0.0.0.0/0`
 
-## Host Name
+## 4. Host Name
 
 Convert the public IP to an sslip.io hostname. For example:
 - Public IP: `1.2.3.4`
 - sslip.io hostname: `1-2-3-4.sslip.io`
 
-## First Setup
+## 5. First Setup
 
 1. SSH into the VM:
    ```bash
@@ -90,7 +90,7 @@ ssh ubuntu@1.2.3.4 sudo journalctl -u slac-grid -u slac-api -f
 
 Edit `/opt/slac-investigator/api.env` on the VM:
 - `INVESTIGATOR_DAILY_RUNS` — max runs per day (global)
-- `INVESTIGATOR_VISITOR_RUNS` — max runs per visitor (per salt)
+- `INVESTIGATOR_VISITOR_RUNS` — max runs per visitor (per hashed IP)
 - `INVESTIGATOR_CORS_ORIGINS` — allowed frontend origins
 
 Then restart the API:

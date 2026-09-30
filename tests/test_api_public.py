@@ -160,3 +160,16 @@ def test_limits_shape_for_local_mode(tmp_path, monkeypatch):
         monkeypatch.delenv(key, raising=False)
     with TestClient(create_app(tmp_path/'api.db', Runner())) as c:
         assert c.get('/api/v1/limits').json() == {'public': False, 'runs_left_today': 15, 'visitor_runs_left': 3, 'busy': False}
+
+
+def test_visitor_ip_is_rightmost_forwarded_address(tmp_path, monkeypatch):
+    with client_for(public_app(tmp_path, monkeypatch, INVESTIGATOR_VISITOR_RUNS='1')) as c:
+        first = start(c, '9.9.9.9, 198.51.100.1'); assert first.status_code == 202; terminal(c, first.json())
+        again = start(c, '198.51.100.1')
+        assert again.status_code == 429 and again.json()['detail']['code'] == 'visitor_limit'
+        assert start(c, '198.51.100.2').status_code == 202
+
+
+def test_public_mode_hides_api_docs(tmp_path, monkeypatch):
+    with client_for(public_app(tmp_path, monkeypatch)) as c:
+        assert c.get('/docs').status_code == 404 and c.get('/openapi.json').status_code == 404

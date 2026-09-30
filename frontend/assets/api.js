@@ -23,8 +23,8 @@ export class InvestigationAPI {
       if(method==='POST'&&response.ok)throw new SubmissionUncertainError('The backend accepted the request but its response could not be read. Do not resubmit; ask the backend owner to locate the run.');
       throw new Error(`API response could not be read (${response.status}).`);
     }
-    if(response.status===429&&payload.detail?.code)throw new LimitError(payload.detail.code,payload.detail.message);
-    if(!response.ok){const detail=payload.detail;throw new Error(`API ${response.status}: ${typeof detail==='string'?detail:detail?.error?.message||detail?.status||'Request rejected. Check the API contract.'}`);}
+    if(response.status===429&&payload?.detail?.code)throw new LimitError(payload.detail.code,payload.detail.message);
+    if(!response.ok){const detail=payload?.detail;throw new Error(`API ${response.status}: ${typeof detail==='string'?detail:detail?.error?.message||detail?.status||'Request rejected. Check the API contract.'}`);}
     return payload;
   }
   events(){return this.request('/api/v1/events');}
