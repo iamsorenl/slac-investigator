@@ -15,9 +15,9 @@ Current host: container `slac-demo` on a home Linux box, public at `https://slac
    ```
 3. Install the app (run on your laptop from the repo). The first run clones and installs, then stops because `.env` is missing:
    ```bash
-   ssh <host> 'lxc exec slac-demo -- bash -s slac-demo.<tailnet>.ts.net' < deploy/lxd/setup.sh
+   ssh <host> 'lxc exec slac-demo -- bash -s slac-demo.<tailnet>.ts.net <home-ipv6-prefix>' < deploy/lxd/setup.sh
    ```
-   The hostname is the container's Tailscale name. Before you know it, pass any placeholder; step 5 reruns this.
+   The hostname is the container's Tailscale name. Before you know it, pass any placeholder; step 5 reruns this. The second argument is optional: your home network's global IPv6 range (on the host, `ip -6 addr` shows it, for example `2001:db8:1234:5678::/64`).
 4. Copy the Groq block from your local `.env` without printing it, then rerun step 3 (services and Tailscale get installed):
    ```bash
    grep -E '^(FLWR_MODEL_API_ENDPOINT|FLWR_MODEL_API_KEY|INVESTIGATOR_MODEL)=' .env | \
@@ -31,13 +31,17 @@ Current host: container `slac-demo` on a home Linux box, public at `https://slac
    Then rerun step 3 with the real `*.ts.net` name, and in the Tailscale console turn off key expiry for the machine (otherwise it drops off after 180 days).
 6. Check from anywhere: `curl https://slac-demo.<tailnet>.ts.net/api/v1/limits`. A new Funnel host can fail TLS for a minute while the relays pick up its certificate.
 
+The script also locks the container down. An nftables rule (`/etc/nftables.conf`, table `slac_egress`) lets it reach the internet but rejects the home network: 10/8, 172.16/12, 192.168/16, link-local, CGNAT, multicast, IPv6 ULA and the home IPv6 range, except its own gateway for DNS and DHCP. SSH inside the container is turned off; use `lxc exec`. If the ISP changes the home IPv6 prefix, rerun the script with the new one.
+
 Public mode runs `collaborative` only, capped at 15 runs a day and 3 per visitor. Funnel forwards each visitor's address in `X-Forwarded-For` from 127.0.0.1, which the API trusts, so visitors are counted separately.
 
 ### Redeploy after a push
 
 ```bash
-ssh <host> 'lxc exec slac-demo -- bash -s slac-demo.<tailnet>.ts.net' < deploy/lxd/setup.sh
+ssh <host> 'lxc exec slac-demo -- bash -s slac-demo.<tailnet>.ts.net <home-ipv6-prefix>' < deploy/lxd/setup.sh
 ```
+
+Always pass the IPv6 prefix again, or the rewritten firewall drops that rule.
 
 ### Logs
 

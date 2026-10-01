@@ -1,8 +1,9 @@
 #!/bin/bash
 # Set up or redeploy the live demo inside an LXD container (ubuntu:24.04), exposed by Tailscale Funnel. Safe to rerun.
-# Run as root inside the container: bash setup.sh <name>.<tailnet>.ts.net   (see docs/DEPLOY.md)
+# Run as root inside the container: bash setup.sh <name>.<tailnet>.ts.net [home-ipv6-prefix]   (see docs/DEPLOY.md)
 set -euo pipefail
-HOST=${1:?usage: setup.sh <name>.<tailnet>.ts.net}
+HOST=${1:?usage: setup.sh <name>.<tailnet>.ts.net [home-ipv6-prefix]}
+HOME_V6=${2:-}   # e.g. 2001:db8:1234:5678::/64, the LAN's global IPv6 range; blocked like the private ranges
 APP=/opt/slac-investigator
 
 export DEBIAN_FRONTEND=noninteractive
@@ -31,6 +32,35 @@ systemctl restart slac-grid slac-api
 command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh
 sed -i 's/^FLAGS=.*/FLAGS="--tun=userspace-networking"/' /etc/default/tailscaled
 systemctl restart tailscaled
+
+# Egress guard: the container may reach the internet but not the home network.
+# Only its own gateway (DNS, DHCP) is allowed among private addresses.
+GW4=$(ip -4 route show default | awk '{print $3; exit}')
+GW6=$(resolvectl dns eth0 2>/dev/null | sed 's/.*: //' | tr ' ' '\n' | grep ':' | grep -v '^fe80' | head -1 || true)
+V6DNS=""; [ -n "$GW6" ] && V6DNS="ip6 daddr $GW6 udp dport 53 accept
+    ip6 daddr $GW6 tcp dport 53 accept"
+V6BLOCK="fc00::/7"; [ -n "$HOME_V6" ] && V6BLOCK="$V6BLOCK, $HOME_V6"
+cat > /etc/nftables.conf <<NFT
+#!/usr/sbin/nft -f
+# Written by deploy/lxd/setup.sh. slac-demo egress guard.
+table inet slac_egress
+delete table inet slac_egress
+table inet slac_egress {
+  chain output {
+    type filter hook output priority 0; policy accept;
+    oif "lo" accept
+    ip daddr $GW4 udp dport { 53, 67 } accept
+    ip daddr $GW4 tcp dport 53 accept
+    $V6DNS
+    ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, 224.0.0.0/4 } counter reject
+    ip6 daddr { $V6BLOCK } counter reject
+  }
+}
+NFT
+nft -f /etc/nftables.conf
+systemctl enable nftables >/dev/null 2>&1
+# Nobody logs in over SSH; access is lxc exec.
+systemctl disable --now ssh.socket ssh.service >/dev/null 2>&1 || true
 
 for attempt in {1..30}; do
   curl -fs http://127.0.0.1:8080/api/v1/limits && { echo; echo "API ready. Next: tailscale up / tailscale funnel --bg 8080 (first time only)."; exit 0; }
