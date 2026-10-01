@@ -33,6 +33,8 @@ Current host: container `slac-demo` on a home Linux box, public at `https://slac
 
 The script also locks the container down. An nftables rule (`/etc/nftables.conf`, table `slac_egress`) lets it reach the internet but rejects the home network: 10/8, 172.16/12, 192.168/16, link-local, CGNAT, multicast, IPv6 ULA and the home IPv6 range, except its own gateway for DNS and DHCP. SSH inside the container is turned off; use `lxc exec`. If the ISP changes the home IPv6 prefix, rerun the script with the new one.
 
+It comes back by itself after a reboot or crash. The container has `boot.autostart=true`; inside it `slac-grid`, `slac-api`, `tailscaled` and the firewall start at boot, the app services have `Restart=always`, and Tailscale keeps its login and Funnel setting. A `slac-watchdog.timer` checks the API every 2 minutes and restarts `slac-grid` and `slac-api` if it stops answering twice in a row. After a power cut the PC itself only turns back on if its BIOS is set to power on when AC returns.
+
 Public mode runs `collaborative` only, capped at 15 runs a day and 3 per visitor. Funnel forwards each visitor's address in `X-Forwarded-For` from 127.0.0.1, which the API trusts, so visitors are counted separately.
 
 ### Redeploy after a push

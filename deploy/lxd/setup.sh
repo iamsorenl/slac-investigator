@@ -62,6 +62,21 @@ systemctl enable nftables >/dev/null 2>&1
 # Nobody logs in over SSH; access is lxc exec.
 systemctl disable --now ssh.socket ssh.service >/dev/null 2>&1 || true
 
+# Watchdog: Restart=always covers crashes; this covers an API that is up but not answering.
+cat > /usr/local/bin/slac-watchdog <<'WD'
+#!/bin/sh
+ok() { curl -fs -m 10 http://127.0.0.1:8080/api/v1/limits >/dev/null; }
+ok && exit 0
+sleep 20; ok && exit 0
+echo "API not answering twice in a row; restarting slac-grid and slac-api"
+systemctl restart slac-grid slac-api
+WD
+chmod 755 /usr/local/bin/slac-watchdog
+printf '[Unit]\nDescription=Restart the SLAC demo if its API stops answering\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/slac-watchdog\n' > /etc/systemd/system/slac-watchdog.service
+printf '[Unit]\nDescription=Check the SLAC demo API every 2 minutes\n\n[Timer]\nOnBootSec=3min\nOnUnitActiveSec=2min\n\n[Install]\nWantedBy=timers.target\n' > /etc/systemd/system/slac-watchdog.timer
+systemctl daemon-reload
+systemctl enable --now slac-watchdog.timer >/dev/null 2>&1
+
 for attempt in {1..30}; do
   curl -fs http://127.0.0.1:8080/api/v1/limits && { echo; echo "API ready. Next: tailscale up / tailscale funnel --bg 8080 (first time only)."; exit 0; }
   sleep 5
