@@ -2,6 +2,8 @@
 
 **Try it live:** [iamsorenl.github.io/slac-investigator](https://iamsorenl.github.io/slac-investigator/): replay two real investigations, or pick "Ask your own" to question the agents live.
 
+**On Flower Hub:** [flower.ai/apps/iamsorenl/slac-investigator](https://flower.ai/apps/iamsorenl/slac-investigator/) (v0.1.2, the version submitted at the hackathon).
+
 The demo is hosted from [Soren's fork](https://github.com/iamsorenl/slac-investigator) so it can stay up for free after the hackathon. The Flower grid runs on a small home server behind Tailscale Funnel, using Groq's free `gpt-oss-20b`, capped at 15 live runs a day. If the server is offline, the site says so and you still get the saved runs. This repo is the main project; the fork only adds the hosting.
 
 This is a fork of [GavinRS/slac-investigator](https://github.com/GavinRS/slac-investigator), the team's main repo.
