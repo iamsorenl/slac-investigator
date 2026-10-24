@@ -41,7 +41,7 @@ async function enterLiveMode(){
   stopPlayback();state.live=true;state.loadVersion++;$('#error').hidden=true;nav();history.replaceState(null,'','#live');
   const back=async message=>{state.live=false;liveModule?.leaveLive();await loadEvent(state.entryId||state.manifest.events[0].id);error(message);};
   try{liveModule??=await import('./live.js');await liveModule.enterLive({onUnavailable:back});}
-  catch(e){await back(`Live runs are unavailable right now (${e.message}), so here are the saved runs.`);}
+  catch(e){await back(e.name==='MaintenanceError'?e.message:`Live runs are unavailable right now (${e.message}), so here are the saved runs.`);}
 }
 function details(e,run){
   const m=run.report.metrics;

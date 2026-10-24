@@ -2,6 +2,9 @@
 import {PUBLIC_API,PAGES_ORIGIN} from './config.js';
 export const LOCAL_ORIGINS=new Set(['http://localhost:3000','http://127.0.0.1:3000','http://localhost:5173','http://127.0.0.1:5173']);
 export class SubmissionUncertainError extends Error {}
+export const MAINTENANCE='The live server is down for maintenance right now. The saved runs below still work; try live again later.';
+// Public server unreachable or its gateway says the backend is down (Tailscale Funnel answers 502 when the home server is off).
+export class MaintenanceError extends Error{constructor(){super(MAINTENANCE);this.name='MaintenanceError';}}
 export class LimitError extends Error{constructor(code,message){super(message);this.code=code;}}
 export class InvestigationAPI {
   constructor({pageOrigin=location.origin,baseURL,fetchImpl=(...args)=>fetch(...args),publicAPI=PUBLIC_API,pagesOrigin=PAGES_ORIGIN}={}){
@@ -17,7 +20,8 @@ export class InvestigationAPI {
     if(url.origin!==this.baseURL||!url.pathname.startsWith('/api/v1/'))throw new Error('Backend returned an unexpected API link.');
     let response;
     try{response=await this.fetch(url.href,{method,credentials:'omit',headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000)});}
-    catch(error){if(method==='POST')throw new SubmissionUncertainError('Submission response was lost. Work may already be running. It was not resubmitted; ask the backend owner to inspect the queue.');throw new Error(`${this.public?'Could not reach the live server.':'Local API connection failed.'} Saved replay has not been substituted.`);}
+    catch(error){if(this.public&&method!=='POST')throw new MaintenanceError();if(method==='POST')throw new SubmissionUncertainError('Submission response was lost. Work may already be running. It was not resubmitted; ask the backend owner to inspect the queue.');throw new Error(`${this.public?'Could not reach the live server.':'Local API connection failed.'} Saved replay has not been substituted.`);}
+    if(this.public&&[502,503,504].includes(response.status))throw new MaintenanceError();
     let payload;
     try{payload=await response.json();}catch(error){
       if(method==='POST'&&response.ok)throw new SubmissionUncertainError('The backend accepted the request but its response could not be read. Do not resubmit; ask the backend owner to locate the run.');

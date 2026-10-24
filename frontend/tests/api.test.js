@@ -1,7 +1,7 @@
 // Transport fixtures test the API contract, not model accuracy. Never served by the site.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {InvestigationAPI,SubmissionUncertainError,observeJob,normalizePlot,validateResult} from '../assets/api.js';
+import {InvestigationAPI,SubmissionUncertainError,MaintenanceError,observeJob,normalizePlot,validateResult} from '../assets/api.js';
 const result=()=>({result_schema_version:2,findings:[],evidence:[{ref:'T-fixture'}],final:{beam_disturbance:{status:'not_corroborated',rationale:'Protocol fixture',tool_result_refs:['T-fixture']},unique_cause:{status:'not_established',rationale:'Protocol fixture',tool_result_refs:['T-fixture']}}});
 const links={status:'/api/v1/investigations/job',activity:'/api/v1/investigations/job/activity',result:'/api/v1/investigations/job/result'};
 const job=status=>({id:'job',series_id:'api-series',status,links});
@@ -66,4 +66,10 @@ test('default browser fetch is invoked without an API-instance receiver',async()
  };
  try{const api=new InvestigationAPI({pageOrigin:'http://127.0.0.1:5173'});assert.deepEqual(await api.events(),{event_ids:['slac-001']});}
  finally{globalThis.fetch=original;}
+});
+test('public server down or behind a dead gateway reads as maintenance',async()=>{
+ const pub=fetchImpl=>new InvestigationAPI({pageOrigin:'https://pages.test',publicAPI:'https://api.test',pagesOrigin:'https://pages.test',fetchImpl});
+ await assert.rejects(pub(async()=>{throw new Error('offline');}).limits(),MaintenanceError);
+ await assert.rejects(pub(async()=>({status:502,ok:false,json:async()=>{throw new Error('html');}})).events(),/maintenance/);
+ await assert.rejects(pub(async()=>({status:404,ok:false,json:async()=>({detail:'nope'})})).events(),/API 404/);
 });

@@ -1,4 +1,4 @@
-import {InvestigationAPI,SubmissionUncertainError,LimitError,observeJob,normalizePlot} from './api.js';
+import {MAINTENANCE,InvestigationAPI,SubmissionUncertainError,LimitError,observeJob,normalizePlot} from './api.js';
 import {escapeHTML as h,pretty,nodeReportCard,dataSharedHeadline,storyHTML,CASES} from './replay.js';
 import {signalsHTML} from './charts.js';
 const $=s=>document.querySelector(s);
@@ -88,7 +88,7 @@ export async function enterLive({onUnavailable}={}){
   live.active=true;
   if(started){if(live.api.public)try{live.limits=await live.api.limits();}catch{}render();return;}
   live.api=new InvestigationAPI();
-  if(live.api.public){try{live.limits=await live.api.limits();}catch(e){live.active=false;onUnavailable?.('The live server is waking up or offline. Try again in a minute; the saved runs are here meanwhile.');return;}}
+  if(live.api.public){try{live.limits=await live.api.limits();}catch(e){live.active=false;onUnavailable?.(MAINTENANCE);return;}}
   const catalog=await live.api.events();live.events=catalog.event_ids;started=true;
   document.addEventListener('click',async e=>{
     const b=e.target.closest('button');if(!b)return;
